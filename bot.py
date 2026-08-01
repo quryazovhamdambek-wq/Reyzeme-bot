@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import sqlite3
+from aiohttp import web
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -36,7 +37,7 @@ from telegram.ext import (
 # Admin ID, Bot Token va Kanal username
 ADMIN_ID = 6416459996
 BOT_TOKEN = os.environ.get(
-    "BOT_TOKEN", "8941048533:AAFkpwA0YEjriEfj6SCwLcDUox2sfUNVQEc"
+    "BOT_TOKEN", "8941048533:AAFJUlaY7aBxd3J7nZOMBAck9MyI7eYBlW0"
 )
 CHANNEL_USERNAME = "@TALIM_ADMINII"
 
@@ -389,7 +390,6 @@ async def get_certificates(
     context.user_data["certificates"] = update.message.text
     lang = context.user_data.get("lang", "uz")
 
-    # PDF yaratish asinxron holda bajariladi ⚡
     pdf_file = await asyncio.to_thread(
         generate_pdf,
         context.user_data,
@@ -447,8 +447,31 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-def main():
+# --- Render uchun Veb-Server (Web Server) 🌐 ---
+async def handle_ping(request):
+    return web.Response(text="Bot ishlamoqda! ✅")
+
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    app.router.add_get("/health", handle_ping)
+
+    port = int(os.environ.get("PORT", 8080))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logging.info(f"Veb-server {port}-portda ishga tushdi 🚀")
+
+
+async def main():
     init_db()
+
+    # Veb-serverni ishga tushirish
+    await start_web_server()
+
+    # Botni ishga tushirish
     app = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -503,8 +526,14 @@ def main():
     )
     app.add_handler(conv_handler)
 
-    app.run_polling()
+    async with app:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling()
+        logging.info("Bot polling rejida ishga tushdi 🤖")
+        # Doimiy ishlashini ta'minlash
+        await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
