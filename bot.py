@@ -586,9 +586,6 @@ async def start_web_server():
 async def main():
     init_db()
     await start_web_server()
-
-    app = Application.builder().token(BOT_TOKEN).build()
-
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("create", create_start),
@@ -623,7 +620,9 @@ async def main():
                 )
             ],
             PORTFOLIO: [
-                MessageHandler            CERTIFICATES: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_portfolio)
+            ],
+            CERTIFICATES: [
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND, get_certificates
                 )
@@ -654,6 +653,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
     
       
       
