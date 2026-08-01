@@ -55,9 +55,10 @@ logging.basicConfig(level=logging.INFO)
     LANGUAGES_EXP,
     PORTFOLIO,
     CERTIFICATES,
-) = range(10)
+    EXPORT_FORMAT,
+) = range(11)
 
-# Matnlar lug'ati (O'zbek / Русский)
+# Matnlar lug'ati (O'zbek / Русский / English)
 TEXTS = {
     "uz": {
         "welcome": "Xush kelibsiz! Rezyume yaratish uchun /create tugmasini bosing.",
@@ -75,7 +76,8 @@ TEXTS = {
         "ask_lang": "6/8. Biladigan tillaringiz (masalan: O'zbek, Ingliz B2):",
         "ask_port": "7/8. Portfolio yoki loyihalaringiz havolasini yuboring:",
         "ask_cert": "8/8. Erishgan sertifikatlaringiz bo'lsa yozing (yoki 'Yo'q' deb yuboring):",
-        "done": "Sizning mukammal PDF rezyumeringiz tayyor bo'ldi! 🎉",
+        "ask_format": "Rezyumeni qaysi formatda olishni xohlaysiz?",
+        "done": "Sizning rezyumeringiz tayyor bo'ldi! 🎉",
         "cancel": "Jarayon bekor qilindi. /start ni bosing.",
     },
     "ru": {
@@ -94,8 +96,29 @@ TEXTS = {
         "ask_lang": "6/8. Владение языками (например: Узбекский, Английский B2):",
         "ask_port": "7/8. Отправьте ссылку на портфолио или проекты:",
         "ask_cert": "8/8. Укажите ваши сертификаты (или напишите 'Нет'):",
-        "done": "Ваше идеальное резюме в формате PDF готово! 🎉",
+        "ask_format": "В каком формате вы хотите получить резюме?",
+        "done": "Ваше резюме готово! 🎉",
         "cancel": "Процесс отменен. Нажмите /start.",
+    },
+    "en": {
+        "welcome": "Welcome! Press /create to build a resume.",
+        "sub_req": "To use the bot, please subscribe to our official channel:",
+        "btn_sub": "📢 Subscribe to Channel",
+        "btn_check": "✅ Check",
+        "not_sub": "You have not subscribed yet. Please subscribe and try again!",
+        "choose_template": "Choose a resume template:",
+        "ask_name": "1/8. Enter your full name:",
+        "ask_phone": "2/8. Enter your phone number:",
+        "ask_photo": "3/8. Send your photo (or press 'Skip'):",
+        "skip": "⏭ Skip",
+        "ask_skills": "4/8. Enter your skills:",
+        "ask_exp": "5/8. Write about your work experience:",
+        "ask_lang": "6/8. Languages spoken (e.g., English B2, Uzbek Native):",
+        "ask_port": "7/8. Send portfolio or project links:",
+        "ask_cert": "8/8. List your certificates (or write 'None'):",
+        "ask_format": "In which format would you like to receive your resume?",
+        "done": "Your resume is ready! 🎉",
+        "cancel": "Process cancelled. Press /start.",
     },
 }
 
@@ -182,7 +205,6 @@ def generate_pdf(data, photo_bytes=None):
         spaceAfter=4,
     )
 
-    # Yuqori qism (Sarlavha va Rasm)
     header_text = f"<b><font size=18>{data.get('name', '')}</font></b><br/><br/>📞 {data.get('phone', '')}"
     header_p = Paragraph(header_text, normal_style)
 
@@ -198,24 +220,37 @@ def generate_pdf(data, photo_bytes=None):
     story.append(Spacer(1, 15))
 
     lang = data.get("lang", "uz")
+    labels = {
+        "uz": [
+            "💡 Ko'nikmalar",
+            "💼 Ish tajribasi",
+            "🌐 Tillar",
+            "🔗 Portfolio",
+            "📜 Sertifikatlar",
+        ],
+        "ru": [
+            "💡 Навыки",
+            "💼 Опыт работы",
+            "🌐 Языки",
+            "🔗 Портфолио",
+            "📜 Сертификаты",
+        ],
+        "en": [
+            "💡 Skills",
+            "💼 Experience",
+            "🌐 Languages",
+            "🔗 Portfolio",
+            "📜 Certificates",
+        ],
+    }
+
+    curr_labels = labels.get(lang, labels["uz"])
     sections = [
-        (
-            "💡 " + ("Ko'nikmalar" if lang == "uz" else "Навыки"),
-            data.get("skills"),
-        ),
-        (
-            "💼 " + ("Ish tajribasi" if lang == "uz" else "Опыт работы"),
-            data.get("experience"),
-        ),
-        ("🌐 " + ("Tillar" if lang == "uz" else "Языки"), data.get("languages")),
-        (
-            "🔗 " + ("Portfolio" if lang == "uz" else "Портфолио"),
-            data.get("portfolio"),
-        ),
-        (
-            "📜 " + ("Sertifikatlar" if lang == "uz" else "Сертификаты"),
-            data.get("certificates"),
-        ),
+        (curr_labels[0], data.get("skills")),
+        (curr_labels[1], data.get("experience")),
+        (curr_labels[2], data.get("languages")),
+        (curr_labels[3], data.get("portfolio")),
+        (curr_labels[4], data.get("certificates")),
     ]
 
     for title, content in sections:
@@ -227,6 +262,30 @@ def generate_pdf(data, photo_bytes=None):
     doc.build(story)
     buffer.seek(0)
     return buffer
+
+
+# --- Telegram Post Matni Yaratish 📝 ---
+def generate_text_post(data):
+    return f"""
+📄 **REZYUME / RESUME**
+
+👤 **Ism / Full Name:** {data.get('name', '-')}
+📞 **Telefon / Phone:** {data.get('phone', '-')}
+
+💡 **Ko'nikmalar / Skills:**
+{data.get('skills', '-')}
+
+💼 **Ish tajribasi / Experience:**
+{data.get('experience', '-')}
+
+🌐 **Tillar / Languages:**
+{data.get('languages', '-')}
+
+🔗 **Portfolio:** {data.get('portfolio', '-')}
+📜 **Sertifikatlar / Certificates:** {data.get('certificates', '-')}
+
+📢 {CHANNEL_USERNAME}
+"""
 
 
 # --- Bot Handlerlari 🤖 ---
@@ -255,9 +314,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-    keyboard = [["🇺🇿 O'zbekcha", "🇷🇺 Русский"]]
+    keyboard = [["🇺🇿 O'zbekcha", "🇷🇺 Русский", "🇬🇧 English"]]
     await update.message.reply_text(
-        "Tilni tanlang / Выберите язык:",
+        "Tilni tanlang / Выберите язык / Choose language:",
         reply_markup=ReplyKeyboardMarkup(
             keyboard, resize_keyboard=True, one_time_keyboard=True
         ),
@@ -267,7 +326,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    lang = "ru" if "Русский" in text else "uz"
+    if "Русский" in text:
+        lang = "ru"
+    elif "English" in text:
+        lang = "en"
+    else:
+        lang = "uz"
+
     context.user_data["lang"] = lang
 
     reply_markup = ReplyKeyboardMarkup(
@@ -297,7 +362,6 @@ async def check_sub_callback(
         await query.message.reply_text("Siz hali kanalga a'zo bo'lmadingiz!")
 
 
-# --- Rezyume Yaratish Jarayoni 📄 ---
 async def create_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "uz")
     keyboard = [["Classic 📄", "Modern 🎨"]]
@@ -390,22 +454,77 @@ async def get_certificates(
     context.user_data["certificates"] = update.message.text
     lang = context.user_data.get("lang", "uz")
 
+    keyboard = [
+        ["📄 PDF Format", "📝 Text Format"],
+        ["🖼️ Image + Text", "🌟 Barchasi (All)"],
+    ]
+    await update.message.reply_text(
+        TEXTS[lang]["ask_format"],
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard, resize_keyboard=True, one_time_keyboard=True
+        ),
+    )
+    return EXPORT_FORMAT
+
+
+async def send_final_resume(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    choice = update.message.text
+    lang = context.user_data.get("lang", "uz")
+    start_keyboard = ReplyKeyboardMarkup(
+        [[KeyboardButton("/start")]], resize_keyboard=True
+    )
+
     pdf_file = await asyncio.to_thread(
         generate_pdf,
         context.user_data,
         context.user_data.get("photo_bytes"),
     )
+    text_post = generate_text_post(context.user_data)
 
-    start_keyboard = ReplyKeyboardMarkup(
-        [[KeyboardButton("/start")]], resize_keyboard=True
-    )
+    if "PDF" in choice:
+        await update.message.reply_document(
+            document=pdf_file,
+            filename=f"Resume_{context.user_data.get('name', 'User')}.pdf",
+            caption=TEXTS[lang]["done"],
+            reply_markup=start_keyboard,
+        )
+    elif "Text" in choice:
+        await update.message.reply_text(
+            text_post, parse_mode="Markdown", reply_markup=start_keyboard
+        )
+    elif "Image" in choice:
+        if context.user_data.get("photo_bytes"):
+            photo_io = io.BytesIO(context.user_data["photo_bytes"])
+            await update.message.reply_photo(
+                photo=photo_io,
+                caption=text_post,
+                parse_mode="Markdown",
+                reply_markup=start_keyboard,
+            )
+        else:
+            await update.message.reply_text(
+                text_post, parse_mode="Markdown", reply_markup=start_keyboard
+            )
+    else:  # Barchasi / All
+        await update.message.reply_document(
+            document=pdf_file,
+            filename=f"Resume_{context.user_data.get('name', 'User')}.pdf",
+        )
+        if context.user_data.get("photo_bytes"):
+            photo_io = io.BytesIO(context.user_data["photo_bytes"])
+            await update.message.reply_photo(
+                photo=photo_io,
+                caption=text_post,
+                parse_mode="Markdown",
+                reply_markup=start_keyboard,
+            )
+        else:
+            await update.message.reply_text(
+                text_post, parse_mode="Markdown", reply_markup=start_keyboard
+            )
 
-    await update.message.reply_document(
-        document=pdf_file,
-        filename=f"Resume_{context.user_data.get('name', 'User')}.pdf",
-        caption=TEXTS[lang]["done"],
-        reply_markup=start_keyboard,
-    )
     return ConversationHandler.END
 
 
@@ -415,7 +534,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# --- Admin Buyruqlari 📊 ---
 async def stat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == ADMIN_ID:
         count = get_users_count()
@@ -447,7 +565,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# --- Render uchun Veb-Server (Web Server) 🌐 ---
+# --- Render Veb-Server 🌐 ---
 async def handle_ping(request):
     return web.Response(text="Bot ishlamoqda! ✅")
 
@@ -467,11 +585,8 @@ async def start_web_server():
 
 async def main():
     init_db()
-
-    # Veb-serverni ishga tushirish
     await start_web_server()
 
-    # Botni ishga tushirish
     app = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -512,28 +627,4 @@ async def main():
             ],
             CERTIFICATES: [
                 MessageHandler(
-                    filters.TEXT & ~filters.COMMAND, get_certificates
-                )
-            ],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-
-    app.add_handler(CommandHandler("stat", stat))
-    app.add_handler(CommandHandler("send", broadcast))
-    app.add_handler(
-        CallbackQueryHandler(check_sub_callback, pattern="^check_sub$")
-    )
-    app.add_handler(conv_handler)
-
-    async with app:
-        await app.initialize()
-        await app.start()
-        await app.updater.start_polling()
-        logging.info("Bot polling rejida ishga tushdi 🤖")
-        # Doimiy ishlashini ta'minlash
-        await asyncio.Event().wait()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+      
