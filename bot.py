@@ -43,7 +43,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-TOKEN = "8941048533:AAFJUlaY7aBxd3J7nZOMBAsk9Myl7eYBIW0"
+TOKEN = "8941048533:AAFJUlaY7aBxd3J7nZOMBAck9MyI7eYBlW0"
 CHANNEL_USERNAME = "@Rezyumelar_Uz"
 
 # Conversation bosqichlari
