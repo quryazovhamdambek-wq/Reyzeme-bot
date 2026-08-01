@@ -36,7 +36,7 @@ from telegram.ext import (
 # Admin ID, Bot Token va Kanal username
 ADMIN_ID = 6416459996
 BOT_TOKEN = os.environ.get(
-    "BOT_TOKEN", "8941048533:AAFJUlaY7aBxd3J7nZOMBAck9MyI7eYBlW0"
+    "BOT_TOKEN", "8941048533:AAFkpwA0YEjriEfj6SCwLcDUox2sfUNVQEc"
 )
 CHANNEL_USERNAME = "@TALIM_ADMINII"
 
