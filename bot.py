@@ -623,9 +623,37 @@ async def main():
                 )
             ],
             PORTFOLIO: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_portfolio)
-            ],
-            CERTIFICATES: [
+                MessageHandler            CERTIFICATES: [
                 MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, get_certificates
+                )
+            ],
+            EXPORT_FORMAT: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, send_final_resume
+                )
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    app.add_handler(CommandHandler("stat", stat))
+    app.add_handler(CommandHandler("send", broadcast))
+    app.add_handler(
+        CallbackQueryHandler(check_sub_callback, pattern="^check_sub$")
+    )
+    app.add_handler(conv_handler)
+
+    async with app:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling()
+        logging.info("Bot polling rejimida ishga tushdi 🤖")
+        await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    
       
       
