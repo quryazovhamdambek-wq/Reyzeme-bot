@@ -34,14 +34,26 @@ from telegram.ext import (
     filters,
 )
 
-# Admin ID, Bot Token va Kanal username
+# --- SOZLAMALAR ---
+# XAVFSIZLIK TUZATILDI: token endi kodga yozilmagan, faqat environment
+# variable orqali olinadi. Agar topilmasa, bot ishga tushmasdan xato beradi.
 ADMIN_ID = 6416459996
-BOT_TOKEN = os.environ.get(
-    "BOT_TOKEN", "8941048533:AAFkpwA0YEjriEfj6SCwLcDUox2sfUNVQEc"
-)
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "BOT_TOKEN environment variable topilmadi! "
+        "Avval eski tokenni @BotFather orqali bekor qiling (revoke), "
+        "yangi token oling va uni BOT_TOKEN nomli environment variable "
+        "sifatida bering (masalan: export BOT_TOKEN='123:ABC...')."
+    )
+
 CHANNEL_USERNAME = "@TALIM_ADMINII"
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
 
 # Conversation handler bosqichlari
 (
@@ -66,6 +78,7 @@ TEXTS = {
         "btn_sub": "📢 Kanalga a'zo bo'lish",
         "btn_check": "✅ Tekshirish",
         "not_sub": "Siz hali kanalga a'zo bo'lmadingiz. Iltimos, a'zo bo'lib qayta tekshiring!",
+        "sub_error": "Obunani tekshirishda xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring yoki admin bilan bog'laning.",
         "choose_template": "Rezyume shablonini tanlang:",
         "ask_name": "1/8. Ismingiz va familiyangizni kiriting:",
         "ask_phone": "2/8. Telefon raqamingizni kiriting:",
@@ -86,6 +99,7 @@ TEXTS = {
         "btn_sub": "📢 Подписаться на канал",
         "btn_check": "✅ Проверить",
         "not_sub": "Вы еще не подписались на канал. Пожалуйста, подпишитесь и проверьте снова!",
+        "sub_error": "Ошибка при проверке подписки. Попробуйте позже или свяжитесь с админом.",
         "choose_template": "Выберите шаблон резюме:",
         "ask_name": "1/8. Введите ваше имя и фамилию:",
         "ask_phone": "2/8. Введите ваш номер телефона:",
@@ -106,6 +120,7 @@ TEXTS = {
         "btn_sub": "📢 Subscribe to Channel",
         "btn_check": "✅ Check",
         "not_sub": "You have not subscribed yet. Please subscribe and try again!",
+        "sub_error": "There was an error checking your subscription. Please try again later or contact the admin.",
         "choose_template": "Choose a resume template:",
         "ask_name": "1/8. Enter your full name:",
         "ask_phone": "2/8. Enter your phone number:",
@@ -122,30 +137,28 @@ TEXTS = {
     },
 }
 
+DB_PATH = "bot_users.db"
 
-# --- SQLite Baza Funksiyalari 🗄️ ---
+
+# --- SQLite Baza Funksiyalari ---
 def init_db():
-    conn = sqlite3.connect("bot_users.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute(
-        "CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)"
-    )
+    cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)")
     conn.commit()
     conn.close()
 
 
 def add_user(user_id):
-    conn = sqlite3.connect("bot_users.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)
-    )
+    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
     conn.close()
 
 
 def get_all_users():
-    conn = sqlite3.connect("bot_users.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT user_id FROM users")
     users = [row[0] for row in cursor.fetchall()]
@@ -154,7 +167,7 @@ def get_all_users():
 
 
 def get_users_count():
-    conn = sqlite3.connect("bot_users.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     count = cursor.fetchone()[0]
@@ -162,20 +175,40 @@ def get_users_count():
     return count
 
 
-# --- Kanal obunasini tekshirish 📢 ---
-async def check_subscription(
-    user_id: int, context: ContextTypes.DEFAULT_TYPE
-) -> bool:
+# --- Kanal obunasini tekshirish ---
+async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE):
+    """
+    TUZATILDI: avval xatolik bo'lsa "True" (obuna bor deb) qaytarilardi —
+    bu foydalanuvchilarga tekshiruvni butunlay chetlab o'tish imkonini
+    berardi (masalan, bot kanalda admin bo'lmasa). Endi natija aniq
+    uch xil bo'ladi: True / False / None (xatolik holati), va chaqiruvchi
+    None holatini alohida ko'rsatadi.
+    """
     try:
         member = await context.bot.get_chat_member(
             chat_id=CHANNEL_USERNAME, user_id=user_id
         )
         return member.status in ["member", "administrator", "creator"]
     except Exception:
-        return True
+        logger.exception("Obunani tekshirishda xatolik (user_id=%s)", user_id)
+        return None
 
 
-# --- PDF Yaratish Funksiyasi 📄 ---
+def _sub_required_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "📢 Kanalga a'zo bo'lish",
+                    url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}",
+                )
+            ],
+            [InlineKeyboardButton("✅ Tekshirish", callback_data="check_sub")],
+        ]
+    )
+
+
+# --- PDF Yaratish Funksiyasi ---
 def generate_pdf(data, photo_bytes=None):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -205,7 +238,10 @@ def generate_pdf(data, photo_bytes=None):
         spaceAfter=4,
     )
 
-    header_text = f"<b><font size=18>{data.get('name', '')}</font></b><br/><br/>📞 {data.get('phone', '')}"
+    header_text = (
+        f"<b><font size=18>{data.get('name', '')}</font></b><br/><br/>"
+        f"📞 {data.get('phone', '')}"
+    )
     header_p = Paragraph(header_text, normal_style)
 
     if photo_bytes:
@@ -221,27 +257,9 @@ def generate_pdf(data, photo_bytes=None):
 
     lang = data.get("lang", "uz")
     labels = {
-        "uz": [
-            "💡 Ko'nikmalar",
-            "💼 Ish tajribasi",
-            "🌐 Tillar",
-            "🔗 Portfolio",
-            "📜 Sertifikatlar",
-        ],
-        "ru": [
-            "💡 Навыки",
-            "💼 Опыт работы",
-            "🌐 Языки",
-            "🔗 Портфолио",
-            "📜 Сертификаты",
-        ],
-        "en": [
-            "💡 Skills",
-            "💼 Experience",
-            "🌐 Languages",
-            "🔗 Portfolio",
-            "📜 Certificates",
-        ],
+        "uz": ["💡 Ko'nikmalar", "💼 Ish tajribasi", "🌐 Tillar", "🔗 Portfolio", "📜 Sertifikatlar"],
+        "ru": ["💡 Навыки", "💼 Опыт работы", "🌐 Языки", "🔗 Портфолио", "📜 Сертификаты"],
+        "en": ["💡 Skills", "💼 Experience", "🌐 Languages", "🔗 Portfolio", "📜 Certificates"],
     }
 
     curr_labels = labels.get(lang, labels["uz"])
@@ -264,7 +282,7 @@ def generate_pdf(data, photo_bytes=None):
     return buffer
 
 
-# --- Telegram Post Matni Yaratish 📝 ---
+# --- Telegram Post Matni Yaratish ---
 def generate_text_post(data):
     return f"""
 📄 **REZYUME / RESUME**
@@ -288,29 +306,25 @@ def generate_text_post(data):
 """
 
 
-# --- Bot Handlerlari 🤖 ---
+# --- Bot Handlerlari ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     add_user(user_id)
 
     is_subscribed = await check_subscription(user_id, context)
+    lang_for_error = context.user_data.get("lang", "uz")
+
+    if is_subscribed is None:
+        # Tekshirishda xatolik chiqdi — foydalanuvchini o'tkazib yubormaymiz,
+        # lekin buni ochiq aytamiz (avvalgi kod bu holatda sukut bo'yicha
+        # "obuna bor" deb hisoblardi, bu xavfsizlik teshigi edi).
+        await update.message.reply_text(TEXTS[lang_for_error]["sub_error"])
+        return ConversationHandler.END
+
     if not is_subscribed:
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "📢 Kanalga a'zo bo'lish",
-                    url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "✅ Tekshirish", callback_data="check_sub"
-                )
-            ],
-        ]
         await update.message.reply_text(
-            "Botdan foydalanish uchun rasmiy kanalimizga a'zo bo'ling:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            TEXTS[lang_for_error]["sub_req"],
+            reply_markup=_sub_required_keyboard(),
         )
         return ConversationHandler.END
 
@@ -335,31 +349,30 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["lang"] = lang
 
-    reply_markup = ReplyKeyboardMarkup(
-        [[KeyboardButton("/create")]], resize_keyboard=True
-    )
-    await update.message.reply_text(
-        TEXTS[lang]["welcome"], reply_markup=reply_markup
-    )
+    reply_markup = ReplyKeyboardMarkup([[KeyboardButton("/create")]], resize_keyboard=True)
+    await update.message.reply_text(TEXTS[lang]["welcome"], reply_markup=reply_markup)
     return ConversationHandler.END
 
 
-async def check_sub_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
+async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    lang = context.user_data.get("lang", "uz")
 
     is_subscribed = await check_subscription(user_id, context)
+
+    if is_subscribed is None:
+        await query.message.reply_text(TEXTS[lang]["sub_error"])
+        return
     if is_subscribed:
         await query.message.delete()
         await context.bot.send_message(
             chat_id=user_id,
-            text="✅ Obuna tasdiqlandi! Iltimos, botni boshlash uchun /start buyrug'ini ustiga bosing.",
+            text="✅ Obuna tasdiqlandi! Iltimos, botni boshlash uchun /start buyrug'ini bosing.",
         )
     else:
-        await query.message.reply_text("Siz hali kanalga a'zo bo'lmadingiz!")
+        await query.message.reply_text(TEXTS[lang]["not_sub"])
 
 
 async def create_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -367,9 +380,7 @@ async def create_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["Classic 📄", "Modern 🎨"]]
     await update.message.reply_text(
         TEXTS[lang]["choose_template"],
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard, resize_keyboard=True, one_time_keyboard=True
-        ),
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True),
     )
     return TEMPLATE
 
@@ -378,9 +389,7 @@ async def get_template(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     context.user_data["template"] = "modern" if "Modern" in text else "classic"
     lang = context.user_data.get("lang", "uz")
-    await update.message.reply_text(
-        TEXTS[lang]["ask_name"], reply_markup=ReplyKeyboardRemove()
-    )
+    await update.message.reply_text(TEXTS[lang]["ask_name"], reply_markup=ReplyKeyboardRemove())
     return NAME
 
 
@@ -397,9 +406,7 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[KeyboardButton(TEXTS[lang]["skip"])]]
     await update.message.reply_text(
         TEXTS[lang]["ask_photo"],
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard, resize_keyboard=True, one_time_keyboard=True
-        ),
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True),
     )
     return PHOTO
 
@@ -408,13 +415,9 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "uz")
     if update.message.photo:
         photo_file = await update.message.photo[-1].get_file()
-        context.user_data["photo_bytes"] = (
-            await photo_file.download_as_bytearray()
-        )
+        context.user_data["photo_bytes"] = await photo_file.download_as_bytearray()
 
-    await update.message.reply_text(
-        TEXTS[lang]["ask_skills"], reply_markup=ReplyKeyboardRemove()
-    )
+    await update.message.reply_text(TEXTS[lang]["ask_skills"], reply_markup=ReplyKeyboardRemove())
     return SKILLS
 
 
@@ -432,9 +435,7 @@ async def get_experience(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return LANGUAGES_EXP
 
 
-async def get_languages_exp(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
+async def get_languages_exp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["languages"] = update.message.text
     lang = context.user_data.get("lang", "uz")
     await update.message.reply_text(TEXTS[lang]["ask_port"])
@@ -448,9 +449,7 @@ async def get_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return CERTIFICATES
 
 
-async def get_certificates(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
+async def get_certificates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["certificates"] = update.message.text
     lang = context.user_data.get("lang", "uz")
 
@@ -460,26 +459,18 @@ async def get_certificates(
     ]
     await update.message.reply_text(
         TEXTS[lang]["ask_format"],
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard, resize_keyboard=True, one_time_keyboard=True
-        ),
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True),
     )
     return EXPORT_FORMAT
 
 
-async def send_final_resume(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
+async def send_final_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choice = update.message.text
     lang = context.user_data.get("lang", "uz")
-    start_keyboard = ReplyKeyboardMarkup(
-        [[KeyboardButton("/start")]], resize_keyboard=True
-    )
+    start_keyboard = ReplyKeyboardMarkup([[KeyboardButton("/start")]], resize_keyboard=True)
 
     pdf_file = await asyncio.to_thread(
-        generate_pdf,
-        context.user_data,
-        context.user_data.get("photo_bytes"),
+        generate_pdf, context.user_data, context.user_data.get("photo_bytes")
     )
     text_post = generate_text_post(context.user_data)
 
@@ -491,9 +482,7 @@ async def send_final_resume(
             reply_markup=start_keyboard,
         )
     elif "Text" in choice:
-        await update.message.reply_text(
-            text_post, parse_mode="Markdown", reply_markup=start_keyboard
-        )
+        await update.message.reply_text(text_post, parse_mode="Markdown", reply_markup=start_keyboard)
     elif "Image" in choice:
         if context.user_data.get("photo_bytes"):
             photo_io = io.BytesIO(context.user_data["photo_bytes"])
@@ -504,9 +493,7 @@ async def send_final_resume(
                 reply_markup=start_keyboard,
             )
         else:
-            await update.message.reply_text(
-                text_post, parse_mode="Markdown", reply_markup=start_keyboard
-            )
+            await update.message.reply_text(text_post, parse_mode="Markdown", reply_markup=start_keyboard)
     else:  # Barchasi / All
         await update.message.reply_document(
             document=pdf_file,
@@ -521,25 +508,26 @@ async def send_final_resume(
                 reply_markup=start_keyboard,
             )
         else:
-            await update.message.reply_text(
-                text_post, parse_mode="Markdown", reply_markup=start_keyboard
-            )
+            await update.message.reply_text(text_post, parse_mode="Markdown", reply_markup=start_keyboard)
 
     return ConversationHandler.END
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "uz")
-    await update.message.reply_text(TEXTS[lang]["cancel"])
+    await update.message.reply_text(
+        TEXTS[lang]["cancel"], reply_markup=ReplyKeyboardRemove()
+    )
     return ConversationHandler.END
 
 
 async def stat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id == ADMIN_ID:
-        count = get_users_count()
-        await update.message.reply_text(
-            f"📊 **Bot statistikasi:**\n\nJami foydalanuvchilar soni: **{count}** ta"
-        )
+    if update.effective_user.id != ADMIN_ID:
+        return
+    count = get_users_count()
+    await update.message.reply_text(
+        f"📊 **Bot statistikasi:**\n\nJami foydalanuvchilar soni: **{count}** ta"
+    )
 
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -547,9 +535,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     text = " ".join(context.args)
     if not text:
-        await update.message.reply_text(
-            "Xabar matnini kiriting! Masalan: `/send Salom`"
-        )
+        await update.message.reply_text("Xabar matnini kiriting! Masalan: `/send Salom`")
         return
     users = get_all_users()
     sent = 0
@@ -559,13 +545,15 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sent += 1
             await asyncio.sleep(0.05)
         except Exception:
-            pass
-    await update.message.reply_text(
-        f"📣 Xabar **{sent}** ta foydalanuvchiga muvaffaqiyatli yuborildi!"
-    )
+            logger.exception("Xabar yuborishda xatolik (user_id=%s)", uid)
+    await update.message.reply_text(f"📣 Xabar **{sent}** ta foydalanuvchiga muvaffaqiyatli yuborildi!")
 
 
-# --- Render Veb-Server 🌐 ---
+async def unknown_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.error("Xatolik yuz berdi:", exc_info=context.error)
+
+
+# --- Render uchun oddiy veb-server (health check) ---
 async def handle_ping(request):
     return web.Response(text="Bot ishlamoqda! ✅")
 
@@ -580,80 +568,8 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    logging.info(f"Veb-server {port}-portda ishga tushdi 🚀")
+    logger.info(f"Veb-server {port}-portda ishga tushdi 🚀")
 
 
 async def main():
-    init_db()
-    await start_web_server()
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("create", create_start),
-            CommandHandler("start", start),
-        ],
-        states={
-            LANG: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, set_language)
-            ],
-            TEMPLATE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_template)
-            ],
-            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            PHONE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)
-            ],
-            PHOTO: [
-                MessageHandler(filters.PHOTO, get_photo),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_photo),
-            ],
-            SKILLS: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_skills)
-            ],
-            EXPERIENCE: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND, get_experience
-                )
-            ],
-            LANGUAGES_EXP: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND, get_languages_exp
-                )
-            ],
-            PORTFOLIO: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_portfolio)
-            ],
-            CERTIFICATES: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND, get_certificates
-                )
-            ],
-            EXPORT_FORMAT: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND, send_final_resume
-                )
-            ],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-
-    app.add_handler(CommandHandler("stat", stat))
-    app.add_handler(CommandHandler("send", broadcast))
-    app.add_handler(
-        CallbackQueryHandler(check_sub_callback, pattern="^check_sub$")
-    )
-    app.add_handler(conv_handler)
-
-    async with app:
-        await app.initialize()
-        await app.start()
-        await app.updater.start_polling()
-        logging.info("Bot polling rejimida ishga tushdi 🤖")
-        await asyncio.Event().wait()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-    
-    
-      
-      
+    i
