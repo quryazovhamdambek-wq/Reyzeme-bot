@@ -474,16 +474,19 @@ async def send_final_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     text_post = generate_text_post(context.user_data)
 
-    if "PDF" in choice:
+    if choice == "📄 PDF Format":
+        
         await update.message.reply_document(
             document=pdf_file,
             filename=f"Resume_{context.user_data.get('name', 'User')}.pdf",
             caption=TEXTS[lang]["done"],
             reply_markup=start_keyboard,
         )
-    elif "Text" in choice:
+    elif choice == "📝 Text Format":
+        
         await update.message.reply_text(text_post, parse_mode="Markdown", reply_markup=start_keyboard)
-    elif "Image" in choice:
+    elif choice == "🖼️ Image + Text":
+        
         if context.user_data.get("photo_bytes"):
             photo_io = io.BytesIO(context.user_data["photo_bytes"])
             await update.message.reply_photo(
