@@ -572,4 +572,55 @@ async def start_web_server():
 
 
 async def main():
-    i
+    async def main():
+    init_db()
+    await start_web_server()
+
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("create", create_start),
+            CommandHandler("start", start),
+        ],
+        states={
+            LANG: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_language)],
+            TEMPLATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_template)],
+            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+            PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
+            PHOTO: [
+                MessageHandler(filters.PHOTO, get_photo),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_photo),
+            ],
+            SKILLS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_skills)],
+            EXPERIENCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_experience)],
+            LANGUAGES_EXP: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_languages_exp)],
+            PORTFOLIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_portfolio)],
+            CERTIFICATES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_certificates)],
+            EXPORT_FORMAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_final_resume)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    app.add_handler(conv_handler)
+    app.add_handler(CallbackQueryHandler(check_sub_callback, pattern="^check_sub$"))
+    app.add_handler(CommandHandler("stat", stat))
+    app.add_handler(CommandHandler("send", broadcast))
+    app.add_error_handler(unknown_error_handler)
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    logger.info("Bot ishga tushdi...")
+
+    stop_event = asyncio.Event()
+    try:
+        await stop_event.wait()
+    finally:
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
