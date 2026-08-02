@@ -47,7 +47,7 @@ if not BOT_TOKEN:
         "sifatida bering (masalan: export BOT_TOKEN='123:ABC...')."
     )
 
-CHANNEL_USERNAME = "@TALIM_ADMINII"
+CHANNEL_USERNAME = "@Rezyumelar_Uz"
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
