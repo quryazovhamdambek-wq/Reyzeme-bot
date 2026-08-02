@@ -572,7 +572,7 @@ async def start_web_server():
 
 
 async def main():
-    async def main():
+    
     init_db()
     await start_web_server()
 
