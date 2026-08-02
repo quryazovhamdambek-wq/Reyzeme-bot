@@ -1,7 +1,8 @@
 import io
 import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler, ContextTypes
+
 
 # Bu yerda sizning mavjud funksiyalaringiz va so'zlar lug'ati bo'lishi kerak
 # (Masalan: generate_pdf, generate_text_post, TEXTS, get_users_count, ADMIN_ID va hokazo)
